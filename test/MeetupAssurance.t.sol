@@ -67,6 +67,10 @@ contract MeetupAssuranceTest is Test {
         vm.deal(bob, 100 ether);
     }
 
+    function _endCampaign() internal {
+        vm.warp(deadline + 1);
+    }
+
     // ---------- constructor ----------
 
     function test_constructor_setsTerms() public view {
@@ -140,10 +144,11 @@ contract MeetupAssuranceTest is Test {
     function test_pledge_revertsAfterCollected() public {
         vm.prank(alice);
         campaign.pledge{value: TARGET}();
+        _endCampaign();
         campaign.collect();
 
         vm.prank(bob);
-        vm.expectRevert(MeetupAssurance.AlreadyCollected.selector);
+        vm.expectRevert(MeetupAssurance.DeadlinePassed.selector);
         campaign.pledge{value: 1 ether}();
     }
 
@@ -161,6 +166,7 @@ contract MeetupAssuranceTest is Test {
         vm.prank(bob);
         campaign.pledge{value: 2 ether}();
 
+        _endCampaign();
         uint256 before = alice.balance;
         vm.prank(alice);
         campaign.refund();
@@ -168,7 +174,7 @@ contract MeetupAssuranceTest is Test {
         assertEq(alice.balance, before + 3 ether);
         assertEq(campaign.pledges(alice), 0);
         assertEq(campaign.pledges(bob), 2 ether);
-        assertEq(campaign.totalPledged(), 2 ether);
+        assertEq(campaign.totalPledged(), 5 ether, "total raised stays visible after refunds");
     }
 
     function test_refund_worksAfterDeadlineWhenTargetMissed() public {
@@ -184,6 +190,7 @@ contract MeetupAssuranceTest is Test {
     function test_refund_isNotRestrictedToBeneficiaryOrOwner() public {
         vm.prank(alice);
         campaign.pledge{value: 1 ether}();
+        _endCampaign();
 
         vm.prank(beneficiary);
         vm.expectRevert(MeetupAssurance.NothingToRefund.selector);
@@ -193,6 +200,7 @@ contract MeetupAssuranceTest is Test {
     function test_refund_secondCallReverts() public {
         vm.prank(alice);
         campaign.pledge{value: 1 ether}();
+        _endCampaign();
 
         vm.startPrank(alice);
         campaign.refund();
@@ -237,6 +245,7 @@ contract MeetupAssuranceTest is Test {
         attacker.pledge{value: 2 ether}();
         vm.prank(bob);
         campaign.pledge{value: 3 ether}();
+        _endCampaign();
 
         attacker.attack();
 
@@ -255,6 +264,7 @@ contract MeetupAssuranceTest is Test {
         campaign.pledge{value: 6 ether}();
         vm.prank(bob);
         campaign.pledge{value: 5 ether}();
+        _endCampaign();
 
         campaign.collect();
 
@@ -266,6 +276,7 @@ contract MeetupAssuranceTest is Test {
     function test_collect_revertsBelowTarget() public {
         vm.prank(alice);
         campaign.pledge{value: TARGET - 1}();
+        _endCampaign();
 
         vm.expectRevert(MeetupAssurance.TargetNotMet.selector);
         campaign.collect();
@@ -279,6 +290,7 @@ contract MeetupAssuranceTest is Test {
     function test_collect_canOnlyExecuteOnce() public {
         vm.prank(alice);
         campaign.pledge{value: TARGET}();
+        _endCampaign();
 
         campaign.collect();
         vm.expectRevert(MeetupAssurance.AlreadyCollected.selector);
@@ -295,6 +307,7 @@ contract MeetupAssuranceTest is Test {
         c.pledge{value: TARGET}();
         vm.prank(bob);
         c.pledge{value: 1 ether}();
+        vm.warp(deadline + 1);
 
         c.collect();
 
@@ -312,6 +325,105 @@ contract MeetupAssuranceTest is Test {
         assertEq(beneficiary.balance, TARGET);
     }
 
+    // ---------- deadline boundary ----------
+
+    function test_collect_revertsBeforeDeadlineEvenIfTargetMet() public {
+        vm.prank(alice);
+        campaign.pledge{value: TARGET}();
+
+        vm.expectRevert(MeetupAssurance.DeadlineNotPassed.selector);
+        campaign.collect();
+    }
+
+    function test_collect_revertsExactlyAtDeadline() public {
+        vm.prank(alice);
+        campaign.pledge{value: TARGET}();
+        vm.warp(deadline);
+
+        vm.expectRevert(MeetupAssurance.DeadlineNotPassed.selector);
+        campaign.collect();
+    }
+
+    function test_collect_succeedsOneSecondAfterDeadline() public {
+        vm.prank(alice);
+        campaign.pledge{value: TARGET}();
+        vm.warp(deadline + 1);
+
+        campaign.collect();
+        assertEq(beneficiary.balance, TARGET);
+    }
+
+    function test_refund_revertsBeforeDeadline() public {
+        vm.prank(alice);
+        campaign.pledge{value: 1 ether}();
+
+        vm.prank(alice);
+        vm.expectRevert(MeetupAssurance.DeadlineNotPassed.selector);
+        campaign.refund();
+    }
+
+    function test_refund_revertsExactlyAtDeadline() public {
+        vm.prank(alice);
+        campaign.pledge{value: 1 ether}();
+        vm.warp(deadline);
+
+        vm.prank(alice);
+        vm.expectRevert(MeetupAssurance.DeadlineNotPassed.selector);
+        campaign.refund();
+    }
+
+    function test_refund_succeedsOneSecondAfterDeadline() public {
+        vm.prank(alice);
+        campaign.pledge{value: 1 ether}();
+        vm.warp(deadline + 1);
+
+        uint256 before = alice.balance;
+        vm.prank(alice);
+        campaign.refund();
+        assertEq(alice.balance, before + 1 ether);
+    }
+
+    function test_pledgeWindowAndPayoutWindowNeverOverlap() public {
+        // At `deadline` pledging works and payouts do not; one second later it flips.
+        vm.warp(deadline);
+        vm.prank(alice);
+        campaign.pledge{value: TARGET}();
+        vm.expectRevert(MeetupAssurance.DeadlineNotPassed.selector);
+        campaign.collect();
+
+        vm.warp(deadline + 1);
+        vm.prank(bob);
+        vm.expectRevert(MeetupAssurance.DeadlinePassed.selector);
+        campaign.pledge{value: 1 ether}();
+        campaign.collect();
+    }
+
+    // ---------- state() ----------
+
+    function test_state_walksThroughSuccessPath() public {
+        assertEq(uint8(campaign.state()), uint8(MeetupAssurance.State.Open));
+
+        vm.prank(alice);
+        campaign.pledge{value: TARGET}();
+        assertEq(uint8(campaign.state()), uint8(MeetupAssurance.State.Open), "met target still open until deadline");
+
+        vm.warp(deadline);
+        assertEq(uint8(campaign.state()), uint8(MeetupAssurance.State.Open), "open at the deadline second");
+
+        vm.warp(deadline + 1);
+        assertEq(uint8(campaign.state()), uint8(MeetupAssurance.State.Succeeded));
+
+        campaign.collect();
+        assertEq(uint8(campaign.state()), uint8(MeetupAssurance.State.Collected));
+    }
+
+    function test_state_failedWhenTargetMissed() public {
+        vm.prank(alice);
+        campaign.pledge{value: 1 ether}();
+        _endCampaign();
+        assertEq(uint8(campaign.state()), uint8(MeetupAssurance.State.Failed));
+    }
+
     // ---------- invariants ----------
 
     function testFuzz_refundAndCollectAreMutuallyExclusive(uint96 a, uint96 b) public {
@@ -322,6 +434,7 @@ contract MeetupAssuranceTest is Test {
         campaign.pledge{value: a}();
         vm.prank(bob);
         campaign.pledge{value: b}();
+        _endCampaign();
 
         if (uint256(a) + uint256(b) >= TARGET) {
             campaign.collect();
