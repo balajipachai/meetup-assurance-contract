@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 /// @title MeetupAssurance
 /// @notice All-or-nothing assurance contract for funding a meetup. People pledge ETH before a
 ///         deadline. If the total reaches the target, the beneficiary collects once. If it does
@@ -9,7 +11,7 @@ pragma solidity ^0.8.28;
 ///      Failed (deadline passed, total < target) -> pledgers refund individually.
 ///      Refunds are pulled by each pledger; no function iterates over pledgers.
 ///      The campaign terms are immutable and set only in the constructor.
-contract MeetupAssurance {
+contract MeetupAssurance is ReentrancyGuard {
     address public immutable beneficiary;
     uint256 public immutable target;
     uint256 public immutable deadline;
@@ -17,8 +19,6 @@ contract MeetupAssurance {
     uint256 public totalPledged;
     bool public collected;
     mapping(address => uint256) public pledges;
-
-    bool private _locked;
 
     event Pledged(address indexed pledger, uint256 amount);
     event Refunded(address indexed pledger, uint256 amount);
@@ -32,16 +32,10 @@ contract MeetupAssurance {
     error NothingToRefund();
     error AlreadyCollected();
     error TransferFailed();
-    error Reentrancy();
-
-    modifier nonReentrant() {
-        if (_locked) revert Reentrancy();
-        _locked = true;
-        _;
-        _locked = false;
-    }
 
     constructor(address beneficiary_, uint256 target_, uint256 deadline_) {
+        // A campaign deadline in days tolerates the seconds of validator timestamp drift.
+        // slither-disable-next-line timestamp
         if (beneficiary_ == address(0) || target_ == 0 || deadline_ <= block.timestamp) {
             revert InvalidTerms();
         }
@@ -52,6 +46,8 @@ contract MeetupAssurance {
 
     /// @notice Pledge ETH to the campaign. The credited amount is exactly `msg.value`.
     function pledge() external payable {
+        // Deadline is measured in days; validator timestamp drift of seconds is acceptable.
+        // slither-disable-next-line timestamp
         if (block.timestamp > deadline) revert DeadlinePassed();
         if (collected) revert AlreadyCollected();
         if (msg.value == 0) revert ZeroPledge();
@@ -73,10 +69,13 @@ contract MeetupAssurance {
         pledges[msg.sender] = 0;
         totalPledged -= amount;
 
+        emit Refunded(msg.sender, amount);
+
+        // .call forwards all gas, unlike transfer's 2300 stipend that breaks smart-wallet pledgers;
+        // state is already cleared above and nonReentrant guards the function.
+        // slither-disable-next-line low-level-calls
         (bool ok,) = msg.sender.call{value: amount}("");
         if (!ok) revert TransferFailed();
-
-        emit Refunded(msg.sender, amount);
     }
 
     /// @notice Beneficiary collects the full balance once the target is met. Callable once.
@@ -87,9 +86,11 @@ contract MeetupAssurance {
         collected = true;
         uint256 amount = address(this).balance;
 
+        emit Collected(beneficiary, amount);
+
+        // .call so a multisig beneficiary can receive; `collected` is already set and nonReentrant guards.
+        // slither-disable-next-line low-level-calls
         (bool ok,) = beneficiary.call{value: amount}("");
         if (!ok) revert TransferFailed();
-
-        emit Collected(beneficiary, amount);
     }
 }
