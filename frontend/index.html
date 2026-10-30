@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chip in for the meetup</title>
+<style>
+  :root {
+    --bg: #faf7f2; --card: #ffffff; --ink: #1d1b16; --muted: #6b665c; --line: #e6e0d4;
+    --accent: #1f6f5c; --accent-ink: #ffffff; --ok: #1f6f5c; --warn: #a15c00; --bad: #a32a2a;
+    --track: #ebe5d8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14130f; --card: #1e1c17; --ink: #f1ede3; --muted: #a29c8d; --line: #34312a;
+      --accent: #4fb89c; --accent-ink: #0c1512; --ok: #4fb89c; --warn: #e0a24a; --bad: #e57373;
+      --track: #2c2a23;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 480px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; line-height: 1.25; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+  .raised { font-size: 2rem; font-weight: 700; line-height: 1.1; }
+  .of { color: var(--muted); }
+  .bar { height: 12px; background: var(--track); border-radius: 99px; overflow: hidden; margin: 12px 0 6px; }
+  .bar > div { height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  .row { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: .95rem; }
+  .banner { border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; font-weight: 600; border: 1px solid var(--line); background: var(--card); }
+  .banner small { display: block; font-weight: 400; color: var(--muted); margin-top: 4px; }
+  .banner.ok { border-color: var(--ok); }
+  .banner.fail { border-color: var(--bad); }
+  .banner.wait { border-color: var(--warn); }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .input { display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); }
+  button { font: inherit; font-weight: 600; padding: 12px 18px; border-radius: 10px; border: 0; cursor: pointer;
+    background: var(--accent); color: var(--accent-ink); min-height: 48px; }
+  button.big { width: 100%; }
+  button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  ul.promise { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
+  ul.promise li { margin-bottom: 6px; }
+  ul.promise b { color: var(--ink); }
+  .msg { margin-top: 10px; min-height: 1.4em; font-size: .95rem; }
+  .msg.err { color: var(--bad); } .msg.good { color: var(--ok); }
+  .mono { font-family: ui-monospace, Menlo, monospace; font-size: .85rem; word-break: break-all; }
+  a { color: var(--accent); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Chip in for the meetup</h1>
+  <p class="sub" id="purpose"></p>
+
+  <div id="setup" class="banner wait" hidden>
+    This page isn't connected to a campaign yet.
+    <small>Set the deployed contract address in <span class="mono">frontend/config.js</span>.</small>
+  </div>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <section class="card" id="progress" hidden>
+    <div><span class="raised" id="raised">0 ETH</span> <span class="of" id="of"></span></div>
+    <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="barwrap"><div id="bar"></div></div>
+    <div class="row"><span id="pct"></span><span id="time"></span></div>
+  </section>
+
+  <section class="card" id="how" hidden>
+    <b>How your money is protected</b>
+    <ul class="promise">
+      <li><b>Goal reached by the deadline:</b> the money goes to <span id="orgA"></span>.</li>
+      <li><b>Goal not reached:</b> every person can take back <i>all</i> of their ETH. <span id="orgB"></span> cannot stop it and has no way to take the money early.</li>
+      <li>The rules are fixed in the contract and can't be changed by anyone.</li>
+    </ul>
+  </section>
+
+  <section class="card" id="walletCard" hidden>
+    <button id="connect" class="big">Connect wallet</button>
+    <div class="msg" id="who"></div>
+  </section>
+
+  <section class="card" id="pledgeCard" hidden>
+    <label for="amount">Amount to pledge (in ETH)</label>
+    <div class="input">
+      <input id="amount" inputmode="decimal" placeholder="0.05" autocomplete="off">
+      <button id="pledgeBtn">Pledge</button>
+    </div>
+    <div class="msg" id="pledgeMsg"></div>
+  </section>
+
+  <section class="card" id="refundCard" hidden>
+    <div id="refundText"></div>
+    <button id="refundBtn" class="big" style="margin-top:12px">Claim my refund</button>
+    <div class="msg" id="refundMsg"></div>
+  </section>
+
+  <section class="card" id="collectCard" hidden>
+    <div id="collectText"></div>
+    <button id="collectBtn" class="big ghost" style="margin-top:12px">Send the money to the organizer</button>
+    <div class="msg" id="collectMsg"></div>
+  </section>
+
+  <p class="sub" id="foot"></p>
+</main>
+
+<script src="config.js"></script>
+<script type="module">
+import { createPublicClient, createWalletClient, custom, http, defineChain, parseAbi, formatEther, parseEther }
+  from "https://esm.sh/viem@2.21.54";
+
+const C = window.CAMPAIGN;
+const $ = (id) => document.getElementById(id);
+const abi = parseAbi([
+  "function beneficiary() view returns (address)",
+  "function target() view returns (uint256)",
+  "function deadline() view returns (uint256)",
+  "function totalPledged() view returns (uint256)",
+  "function pledges(address) view returns (uint256)",
+  "function state() view returns (uint8)",
+  "function pledge() payable",
+  "function refund()",
+  "function collect()",
+  "error InvalidTerms()", "error DeadlinePassed()", "error ZeroPledge()", "error DeadlineNotPassed()",
+  "error TargetMet()", "error TargetNotMet()", "error NothingToRefund()", "error AlreadyCollected()",
+  "error TransferFailed()", "error ReentrancyGuardReentrantCall()",
+]);
+const OPEN = 0, SUCCEEDED = 1, FAILED = 2, COLLECTED = 3;
+
+const PLAIN = {
+  DeadlinePassed: "The deadline has passed, so new pledges are closed.",
+  ZeroPledge: "Enter an amount greater than zero.",
+  DeadlineNotPassed: "This isn't possible until the deadline has passed.",
+  TargetMet: "The goal was reached, so refunds are closed.",
+  TargetNotMet: "The goal wasn't reached, so the organizer can't collect.",
+  NothingToRefund: "You have no pledge to get back.",
+  AlreadyCollected: "The money has already been sent to the organizer.",
+};
+function explain(e) {
+  const name = e?.walk?.((x) => x?.data?.errorName)?.data?.errorName || e?.cause?.data?.errorName;
+  if (name && PLAIN[name]) return PLAIN[name];
+  if (/user rejected|denied/i.test(e?.message || "")) return "You cancelled the request in your wallet.";
+  if (/insufficient funds/i.test(e?.message || "")) return "Your wallet doesn't have enough ETH for this plus network fees.";
+  return "Something went wrong. Nothing was sent. Please try again.";
+}
+
+const eth = (wei) => {
+  const n = Number(formatEther(wei));
+  return (n >= 1 ? n.toFixed(2) : n.toFixed(4)).replace(/\.?0+$/, "") + " ETH";
+};
+const short = (a) => a.slice(0, 6) + "…" + a.slice(-4);
+function left(sec) {
+  if (sec <= 0) return "ended";
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  return d > 0 ? `${d}d ${h}h left` : h > 0 ? `${h}h ${m}m left` : `${Math.max(m, 1)}m left`;
+}
+
+$("title").textContent = C.title;
+document.title = C.title;
+$("purpose").textContent = `Raising ${C.purpose}.`;
+$("orgA").textContent = C.organizer; $("orgB").textContent = C.organizer;
+
+if (!C.address) { $("setup").hidden = false; throw new Error("No campaign address configured"); }
+
+const chain = defineChain({
+  id: C.chainId, name: C.chainName,
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: [C.rpcUrl] } },
+});
+const pub = createPublicClient({ chain, transport: http(C.rpcUrl) });
+let wallet = null, account = null, terms = null;
+
+async function loadTerms() {
+  const [beneficiary, target, deadline] = await Promise.all(
+    ["beneficiary", "target", "deadline"].map((functionName) => pub.readContract({ address: C.address, abi, functionName })));
+  terms = { beneficiary, target, deadline: Number(deadline) };
+}
+
+async function refresh() {
+  try {
+    if (!terms) await loadTerms();
+    const [total, state, mine] = await Promise.all([
+      pub.readContract({ address: C.address, abi, functionName: "totalPledged" }),
+      pub.readContract({ address: C.address, abi, functionName: "state" }),
+      account ? pub.readContract({ address: C.address, abi, functionName: "pledges", args: [account] }) : 0n,
+    ]);
+    render(Number(state), total, mine);
+  } catch (e) {
+    $("banner").hidden = false; $("banner").className = "banner wait";
+    $("banner").innerHTML = "Couldn't reach the campaign. <small>Check your connection and wait a moment; this page retries automatically.</small>";
+  }
+}
+
+function render(state, total, mine) {
+  const now = Math.floor(Date.now() / 1000);
+  const pct = Math.min(100, Number((total * 100n) / terms.target));
+  for (const id of ["progress", "how", "walletCard"]) $(id).hidden = false;
+  $("raised").textContent = eth(total);
+  $("of").textContent = `of ${eth(terms.target)} goal`;
+  $("bar").style.width = pct + "%";
+  $("barwrap").setAttribute("aria-valuenow", String(pct));
+  $("pct").textContent = pct + "% of goal";
+  $("time").textContent = state === OPEN ? left(terms.deadline - now) : "deadline passed";
+
+  const b = $("banner"); b.hidden = false;
+  const org = C.organizer;
+  if (state === OPEN) {
+    b.className = "banner";
+    b.innerHTML = total >= terms.target
+      ? `Goal reached! <small>Pledging stays open until the deadline. After that the money goes to ${org}.</small>`
+      : `Open for pledges <small>${eth(terms.target - total)} still needed before the deadline.</small>`;
+  } else if (state === SUCCEEDED) {
+    b.className = "banner ok";
+    b.innerHTML = `Goal reached — the meetup is on! <small>The pledged money goes to ${org}. Nobody needs a refund.</small>`;
+  } else if (state === FAILED) {
+    b.className = "banner fail";
+    b.innerHTML = `Goal not reached <small>The meetup won't be funded. Everyone can take back all of their ETH below.</small>`;
+  } else {
+    b.className = "banner ok";
+    b.innerHTML = `Done — the money has been sent to ${org}. <small>Thank you for chipping in.</small>`;
+  }
+
+  $("pledgeCard").hidden = state !== OPEN;
+  $("collectCard").hidden = state !== SUCCEEDED;
+  $("collectText").textContent = `The goal was met. Anyone can press this to send ${eth(total)} to ${org}.`;
+
+  const canRefund = state === FAILED && mine > 0n;
+  $("refundCard").hidden = !(state === FAILED);
+  $("refundBtn").disabled = !canRefund;
+  $("refundText").innerHTML = !account
+    ? "Connect your wallet to see your pledge and claim it back."
+    : mine > 0n ? `You pledged <b>${eth(mine)}</b>. You can get all of it back.`
+    : "You have nothing to claim from this campaign.";
+  if (state === OPEN && mine > 0n) $("pledgeMsg").textContent = `You've pledged ${eth(mine)} so far.`;
+
+  $("foot").innerHTML = `Contract <a class="mono" href="${C.explorer}/address/${C.address}" target="_blank" rel="noopener">${short(C.address)}</a> on ${C.chainName}. ` +
+    `Organizer wallet <span class="mono">${short(terms.beneficiary)}</span>.`;
+}
+
+async function ensureWallet() {
+  if (!window.ethereum) throw Object.assign(new Error("no wallet"), { friendly: "Open this page in your wallet's browser (MetaMask, Rainbow, Coinbase Wallet…) to pledge." });
+  wallet = createWalletClient({ chain, transport: custom(window.ethereum) });
+  [account] = await wallet.requestAddresses();
+  try { await wallet.switchChain({ id: C.chainId }); } catch { /* wallet may not support switching */ }
+  $("who").textContent = `Connected: ${short(account)}`;
+  $("connect").hidden = true;
+  await refresh();
+}
+
+// Dry-run first: if the contract would reject the call, the viem error carries its decoded
+// custom error, which `explain` turns into a sentence. Only then ask the wallet to sign.
+async function send(functionName, value) {
+  await pub.simulateContract({ address: C.address, abi, functionName, account, value });
+  return wallet.writeContract({ address: C.address, abi, functionName, account, value });
+}
+
+async function act(msgEl, fn) {
+  msgEl.className = "msg"; msgEl.textContent = "Confirm in your wallet…";
+  try {
+    if (!account) await ensureWallet();
+    const hash = await fn();
+    msgEl.textContent = "Sent. Waiting for confirmation…";
+    const receipt = await pub.waitForTransactionReceipt({ hash });
+    if (receipt.status !== "success") throw Object.assign(new Error("reverted"), { friendly: "The transaction failed on the network, so nothing changed. Your ETH is safe. Please try again." });
+    msgEl.className = "msg good"; msgEl.textContent = "Done!";
+    await refresh();
+  } catch (e) {
+    msgEl.className = "msg err"; msgEl.textContent = e.friendly || explain(e);
+  }
+}
+
+$("connect").onclick = async () => {
+  try { await ensureWallet(); }
+  catch (e) { $("who").className = "msg err"; $("who").textContent = e.friendly || explain(e); }
+};
+$("pledgeBtn").onclick = () => act($("pledgeMsg"), async () => {
+  let value;
+  try { value = parseEther($("amount").value.trim()); } catch { throw Object.assign(new Error("bad"), { friendly: "Enter an amount in ETH, like 0.05." }); }
+  if (value <= 0n) throw Object.assign(new Error("zero"), { friendly: PLAIN.ZeroPledge });
+  return send("pledge", value);
+});
+$("refundBtn").onclick = () => act($("refundMsg"), () => send("refund"));
+$("collectBtn").onclick = () => act($("collectMsg"), () => send("collect"));
+
+if (window.ethereum) window.ethereum.on?.("accountsChanged", () => location.reload());
+await refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>
