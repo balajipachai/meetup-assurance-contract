@@ -65,14 +65,22 @@ collect through the page.
 
 ## Deploy (Sepolia)
 
-The signer is a Foundry keystore, never a file in this repo:
+The signer is a Foundry keystore, never a file in this repo. Put the non-secret settings in `.env`
+(see `.env.example`): `SEPOLIA_RPC_URL`, `BENEFICIARY`, `TARGET_WEI`, `DURATION_SECONDS`, `DEPLOYER`
+(the keystore account's address) and optionally `ETHERSCAN_API_KEY`.
 
 ```sh
-cast wallet import deployer --interactive
-cp .env.example .env   # fill SEPOLIA_RPC_URL, BENEFICIARY, TARGET_WEI, DURATION_SECONDS
-source .env
-forge script script/Deploy.s.sol --rpc-url "$SEPOLIA_RPC_URL" --account deployer --broadcast
+cast wallet import deployer --interactive   # once
+script/deploy.sh
 ```
+
+`script/deploy.sh` deploys, verifies the source (Sourcify, or Etherscan when a key is set), then confirms the
+transaction succeeded and code exists at the address before printing it.
+
+**Why `--skip-simulation`.** Forge's local EVM estimated about 0.49M gas for this deployment, but Sepolia's node
+needs about 3.3M. With forge's own estimate the transaction ran out of gas on-chain: it was mined, charged for
+gas, and deployed nothing, while the broadcast file still listed a contract address. Taking the estimate from the
+node avoids that, and the script's final check catches this failure mode instead of trusting the broadcast file.
 
 ### Deployed address
 
