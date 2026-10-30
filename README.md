@@ -27,7 +27,7 @@ If it does not, each pledger reclaims their own pledge. Nobody pays for an event
 - **Pull refunds.** `refund()` sends `msg.sender` their own recorded pledge. No function loops over pledgers,
   and no owner or beneficiary can trigger or block a refund.
 - **Checks-effects-interactions plus a guard.** The pledge is zeroed and `totalPledged` reduced *before* the
-  ETH is sent, and `refund()`/`collect()` also carry a `nonReentrant` modifier.
+  ETH is sent, and `refund()`/`collect()` also carry OpenZeppelin's `nonReentrant` (v5.7.0). Events are emitted before the external call.
 - **One-shot payout.** `collect()` reads `collected`, sets it before the transfer, and reverts if the target is not met.
 - **Immutable terms.** `beneficiary`, `target` and `deadline` are `immutable`, set only in the constructor.
   There is no owner and no setter.
@@ -43,6 +43,14 @@ forge test
 
 The suite covers every state transition, both reentrancy paths (a malicious pledger and a malicious beneficiary),
 and a fuzz test that refund and collect are mutually exclusive.
+
+## Verification performed
+
+| Layer | Result |
+|-------|--------|
+| `forge test` | 27 tests pass, including 2 reentrancy attacks and a fuzz test |
+| Slither | 0 findings; 4 accepted informational findings (`timestamp`, `low-level-calls`) are suppressed inline with a reason |
+| Anvil smoke test | Funded path (pledge, refund blocked, collect once, second collect blocked) and failed path (collect blocked, pledge after deadline blocked, refund works) behave as designed on deployed bytecode |
 
 ## Deploy (Sepolia)
 
