@@ -86,4 +86,7 @@ node avoids that, and the script's final check catches this failure mode instead
 
 | Network | Address |
 |---------|---------|
-| Sepolia | _pending deployment_ |
+| Sepolia | [`0x26d65fA7A493523a1FF713789ac5eA814386807b`](https://sepolia.etherscan.io/address/0x26d65fA7A493523a1FF713789ac5eA814386807b) |
+
+Source verified on [Sourcify](https://repo.sourcify.dev/11155111/0x26d65fA7A493523a1FF713789ac5eA814386807b) (exact match). Deploy record: `broadcast/Deploy.s.sol/11155111/run-latest.json`.
+Campaign terms: goal 1 ETH, beneficiary `0xA7864883FB579245478F75aC4882b170e7D7676C`, deadline 1795962192 (unix).
